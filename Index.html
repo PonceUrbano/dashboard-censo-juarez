@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Dashboard Demográfico - Cd. Juárez</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<!-- MapLibre GL JS: librería de mapas, gratuita, sin necesidad de token -->
+<script src="maplibre-gl.js"></script>
+<link href="maplibre-gl.css" rel="stylesheet" />
+
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; }
+  #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+
+  /* Panel lateral de resultados */
+  #panel {
+    position: absolute; top: 10px; left: 10px; z-index: 1;
+    background: #14213d; color: white; padding: 16px;
+    border-radius: 8px; width: 260px; font-family: Arial, sans-serif;
+  }
+  #panel h2 { font-size: 16px; margin: 0 0 8px; }
+  #panel p { margin: 4px 0; font-size: 14px; }
+  #panel .valor { font-size: 28px; font-weight: bold; }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<!-- Panel de resultados: por ahora solo muestra la manzana bajo el cursor -->
+<div id="panel">
+  <h2>Dashboard Demográfico</h2>
+
+  <label for="variable">Variable:</label>
+<select id="variable">
+  <option value="POBTOT">Población total</option>
+  <option value="POBFEM_1">Población femenina</option>
+  <option value="POBMAS_1">Población masculina</option>
+</select>
+
+  <p>Cd. Juárez &mdash; Censo INEGI 2020</p>
+  <p>Población total: <span id="pobtot" class="valor">-</span></p>
+  <p>Mujeres: <span id="pobfem">-</span> &nbsp; Hombres: <span id="pobmas">-</span></p>
+  <p style="opacity:.7; font-size:12px;">Haz clic en una manzana para ver sus datos.</p>
+</div>
+
+<script>
+// -------------------------------------------------------------------
+// 1) Nombres "bonitos" para las variables del censo (diccionario).
+//    Los datos crudos del GeoJSON conservan las claves del INEGI;
+//    aquí solo mapeamos cómo se muestran en la interfaz.
+// -------------------------------------------------------------------
+const etiquetas = {
+  POBTOT: "Población total",
+  POBFEM_1: "Población femenina",
+  POBMAS_1: "Población masculina",
+};
+
+// -------------------------------------------------------------------
+// 2) Crear el mapa. Centro aproximado en Cd. Juárez.
+//    Usamos el estilo "Positron" de CARTO: limpio, gris claro,
+//    sin tanto ruido visual. Es gratuito y no requiere token.
+// -------------------------------------------------------------------
+const map = new maplibregl.Map({
+  container: "map",
+  style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+  center: [-106.45, 31.68], // [lon, lat] aprox. Cd. Juárez
+  zoom: 11,
+});
+
+map.addControl(new maplibregl.NavigationControl(), "top-right");
+
+// -------------------------------------------------------------------
+// 3) Cuando el mapa esté listo, cargar el GeoJSON de manzanas
+//    y pintarlo como coroplético por POBTOT.
+// -------------------------------------------------------------------
+map.on("load", async () => {
+  const resp = await fetch("manzanas_censo_tema1.geojson");
+  const data = await resp.json();
+
+  map.addSource("manzanas", {
+    type: "geojson",
+    data: data,
+  });
+
+  // Relleno coroplético: interpola color según POBTOT
+  map.addLayer({
+    id: "manzanas-fill",
+    type: "fill",
+    source: "manzanas",
+    filter: [">", ["get", "POBTOT"], 0],
+    paint: {
+   "fill-color": [
+  "case",
+  ["==", ["get", "POBTOT"], null],
+  "rgba(0,0,0,0)",
+  [
+    "interpolate", ["linear"], ["get", "POBTOT"],
+    0,   "#2c2c54",
+    50,  "#e17055",
+    200, "#d63031",
+    600, "#ff7675"
+  ]
+],
+      "fill-opacity": 0.25,
+    },
+  });
+
+  // Bordes de manzana (gris suave, discreto sobre el basemap claro)
+  map.addLayer({
+    id: "manzanas-linea",
+    type: "line",
+    source: "manzanas",
+    paint: { "line-color": "#555", "line-width": 0.3, "line-opacity": 0.4 },
+  });
+
+  // Zoom automático a la extensión de los datos
+  const bounds = new maplibregl.LngLatBounds();
+  data.features.forEach(f => {
+    const coords = f.geometry.type === "MultiPolygon" ? f.geometry.coordinates.flat(2) : f.geometry.coordinates.flat(1);
+    coords.forEach(([lng, lat]) => bounds.extend([lng, lat]));
+  });
+  map.fitBounds(bounds, { padding: 20 });
+
+  // -----------------------------------------------------------------
+  // 4) Clic en una manzana -> mostrar sus datos en el panel lateral.
+  //    (Este es el punto de partida del "círculo de análisis" del
+  //    paso 5: por ahora es solo una manzana, luego lo cambiamos
+  //    por la suma de todas las manzanas dentro de un radio.)
+  // -----------------------------------------------------------------
+  map.on("click", "manzanas-fill", (e) => {
+    const props = e.features[0].properties;
+    document.getElementById("pobtot").textContent = props.POBTOT;
+    document.getElementById("pobfem").textContent = props.POBFEM_1;
+    document.getElementById("pobmas").textContent = props.POBMAS_1;
+  });
+
+  map.on("mouseenter", "manzanas-fill", () => { map.getCanvas().style.cursor = "pointer"; });
+  map.on("mouseleave", "manzanas-fill", () => { map.getCanvas().style.cursor = ""; });
+});
+</script>
+
+</body>
+</html>
