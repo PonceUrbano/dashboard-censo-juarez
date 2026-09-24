@@ -5,9 +5,12 @@
 <title>Dashboard Demográfico - Cd. Juárez</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-<!-- MapLibre GL JS: librería de mapas, gratuita, sin necesidad de token -->
-<script src="maplibre-gl.js"></script>
-<link href="maplibre-gl.css" rel="stylesheet" />
+<!-- MapLibre GL JS: CDN oficial en la nube (evita usar archivos locales pesados) -->
+<script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+<link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
+
+<!-- Turf.js: Librería de operaciones espaciales para el círculo y las sumas en tiempo real -->
+<script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
 
 <style>
   html, body { margin: 0; padding: 0; height: 100%; }
@@ -17,127 +20,192 @@
   #panel {
     position: absolute; top: 10px; left: 10px; z-index: 1;
     background: #14213d; color: white; padding: 16px;
-    border-radius: 8px; width: 260px; font-family: Arial, sans-serif;
+    border-radius: 8px; width: 280px; font-family: Arial, sans-serif;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
   }
-  #panel h2 { font-size: 16px; margin: 0 0 8px; }
-  #panel p { margin: 4px 0; font-size: 14px; }
-  #panel .valor { font-size: 28px; font-weight: bold; }
+  #panel h2 { font-size: 16px; margin: 0 0 12px; border-bottom: 1px solid #fca311; padding-bottom: 6px; }
+  #panel p { margin: 6px 0; font-size: 14px; }
+  #panel .control-group { margin-bottom: 12px; }
+  #panel label { font-size: 12px; opacity: 0.9; display: block; margin-bottom: 4px; }
+  #panel select, #panel input[type="range"] { width: 100%; box-sizing: border-box; }
+  #panel .valor { font-size: 28px; font-weight: bold; color: #fca311; display: block; margin: 4px 0; }
 </style>
 </head>
 <body>
 
 <div id="map"></div>
 
-<!-- Panel de resultados: por ahora solo muestra la manzana bajo el cursor -->
 <div id="panel">
   <h2>Dashboard Demográfico</h2>
 
-  <label for="variable">Variable:</label>
-<select id="variable">
-  <option value="POBTOT">Población total</option>
-  <option value="POBFEM_1">Población femenina</option>
-  <option value="POBMAS_1">Población masculina</option>
-</select>
+  <div class="control-group">
+    <label for="variable">Variable Visual:</label>
+    <select id="variable">
+      <option value="POBTOT">Población total</option>
+      <option value="POBFEM_1">Población femenina</option>
+      <option value="POBMAS_1">Población masculina</option>
+    </select>
+  </div>
+
+  <div class="control-group">
+    <label for="radio">Radio de análisis: <span id="radio-val">1.0</span> km</label>
+    <input type="range" id="radio" min="0.2" max="5.0" step="0.1" value="1.0" />
+  </div>
 
   <p>Cd. Juárez &mdash; Censo INEGI 2020</p>
-  <p>Población total: <span id="pobtot" class="valor">-</span></p>
-  <p>Mujeres: <span id="pobfem">-</span> &nbsp; Hombres: <span id="pobmas">-</span></p>
-  <p style="opacity:.7; font-size:12px;">Haz clic en una manzana para ver sus datos.</p>
+  <hr style="opacity: 0.2; margin: 12px 0;">
+  
+  <p>Resultados en el área:</p>
+  <p>Población total local: <span id="pobtot" class="valor">-</span></p>
+  <p>Mujeres: <span id="pobfem">-</span> &nbsp;|&nbsp; Hombres: <span id="pobmas">-</span></p>
+  <p style="opacity:.7; font-size:11px; margin-top:12px;">Haz clic en cualquier punto del mapa para calcular los datos en el radio elegido.</p>
 </div>
 
 <script>
-// -------------------------------------------------------------------
-// 1) Nombres "bonitos" para las variables del censo (diccionario).
-//    Los datos crudos del GeoJSON conservan las claves del INEGI;
-//    aquí solo mapeamos cómo se muestran en la interfaz.
-// -------------------------------------------------------------------
-const etiquetas = {
-  POBTOT: "Población total",
-  POBFEM_1: "Población femenina",
-  POBMAS_1: "Población masculina",
-};
+let geojsonData = null;
+let ultimoClickLngLat = null;
 
-// -------------------------------------------------------------------
-// 2) Crear el mapa. Centro aproximado en Cd. Juárez.
-//    Usamos el estilo "Positron" de CARTO: limpio, gris claro,
-//    sin tanto ruido visual. Es gratuito y no requiere token.
-// -------------------------------------------------------------------
 const map = new maplibregl.Map({
   container: "map",
   style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
-  center: [-106.45, 31.68], // [lon, lat] aprox. Cd. Juárez
+  center: [-106.45, 31.68], 
   zoom: 11,
 });
 
 map.addControl(new maplibregl.NavigationControl(), "top-right");
 
-// -------------------------------------------------------------------
-// 3) Cuando el mapa esté listo, cargar el GeoJSON de manzanas
-//    y pintarlo como coroplético por POBTOT.
-// -------------------------------------------------------------------
 map.on("load", async () => {
   const resp = await fetch("manzanas_censo_tema1.geojson");
-  const data = await resp.json();
+  geojsonData = await resp.json();
 
-  map.addSource("manzanas", {
-    type: "geojson",
-    data: data,
+  // Asegurar que valores nulos o indefinidos sean 0 para evitar errores en las sumas
+  geojsonData.features.forEach(f => {
+    f.properties.POBTOT = f.properties.POBTOT || 0;
+    f.properties.POBFEM_1 = f.properties.POBFEM_1 || 0;
+    f.properties.POBMAS_1 = f.properties.POBMAS_1 || 0;
+    
+    // Calculamos el centroide de cada manzana una sola vez para agilizar el análisis espacial
+    f.properties.centroide = turf.centroid(f).geometry.coordinates;
   });
 
-  // Relleno coroplético: interpola color según POBTOT
+  map.addSource("manzanas", { type: "geojson", data: geojsonData });
+
+  // Source para dibujar el círculo de búsqueda en tiempo real
+  map.addSource("circulo-busqueda", {
+    type: "geojson",
+    data: turf.featureCollection([])
+  });
+
+  // Capa de relleno para las manzanas (Coroplético por POBTOT por defecto)
   map.addLayer({
     id: "manzanas-fill",
     type: "fill",
     source: "manzanas",
     filter: [">", ["get", "POBTOT"], 0],
     paint: {
-   "fill-color": [
-  "case",
-  ["==", ["get", "POBTOT"], null],
-  "rgba(0,0,0,0)",
-  [
-    "interpolate", ["linear"], ["get", "POBTOT"],
-    0,   "#2c2c54",
-    50,  "#e17055",
-    200, "#d63031",
-    600, "#ff7675"
-  ]
-],
-      "fill-opacity": 0.25,
-    },
+      "fill-color": [
+        "interpolate", ["linear"], ["get", "POBTOT"],
+        0,   "#2c2c54",
+        50,  "#e17055",
+        200, "#d63031",
+        600, "#ff7675"
+      ],
+      "fill-opacity": 0.35
+    }
   });
 
-  // Bordes de manzana (gris suave, discreto sobre el basemap claro)
+  // Bordes discretos de las manzanas
   map.addLayer({
     id: "manzanas-linea",
     type: "line",
     source: "manzanas",
-    paint: { "line-color": "#555", "line-width": 0.3, "line-opacity": 0.4 },
+    paint: { "line-color": "#555", "line-width": 0.3, "line-opacity": 0.3 }
   });
 
-  // Zoom automático a la extensión de los datos
+  // Capas del círculo de análisis (Relleno y borde)
+  map.addLayer({
+    id: "circulo-layer-fill",
+    type: "fill",
+    source: "circulo-busqueda",
+    paint: { "fill-color": "#fca311", "fill-opacity": 0.15 }
+  });
+
+  map.addLayer({
+    id: "circulo-layer-stroke",
+    type: "line",
+    source: "circulo-busqueda",
+    paint: { "line-color": "#fca311", "line-width": 2, "line-dasharray": [2, 2] }
+  });
+
+  // Ajustar la vista del mapa automáticamente a la extensión del GeoJSON
   const bounds = new maplibregl.LngLatBounds();
-  data.features.forEach(f => {
+  geojsonData.features.forEach(f => {
     const coords = f.geometry.type === "MultiPolygon" ? f.geometry.coordinates.flat(2) : f.geometry.coordinates.flat(1);
     coords.forEach(([lng, lat]) => bounds.extend([lng, lat]));
   });
   map.fitBounds(bounds, { padding: 20 });
 
   // -----------------------------------------------------------------
-  // 4) Clic en una manzana -> mostrar sus datos en el panel lateral.
-  //    (Este es el punto de partida del "círculo de análisis" del
-  //    paso 5: por ahora es solo una manzana, luego lo cambiamos
-  //    por la suma de todas las manzanas dentro de un radio.)
+  // Función que genera el círculo y suma las poblaciones locales
   // -----------------------------------------------------------------
-  map.on("click", "manzanas-fill", (e) => {
-    const props = e.features[0].properties;
-    document.getElementById("pobtot").textContent = props.POBTOT;
-    document.getElementById("pobfem").textContent = props.POBFEM_1;
-    document.getElementById("pobmas").textContent = props.POBMAS_1;
+  function ejecutarAnalisisEspacial(lngLat) {
+    if (!geojsonData) return;
+    
+    ultimoClickLngLat = lngLat;
+    const radioKm = parseFloat(document.getElementById("radio").value);
+    const puntoCentro = turf.point([lngLat.lng, lngLat.lat]);
+    
+    // 1. Crear la geometría poligonal del círculo usando Turf.js
+    const circuloGeo = turf.buffer(puntoCentro, radioKm, { units: "kilometers" });
+    map.getSource("circulo-busqueda").setData(circuloGeo);
+
+    let sumaPobTot = 0;
+    let sumaPobFem = 0;
+    let sumaPobMas = 0;
+
+    // 2. Sumar datos de manzanas cuyo centroide caiga dentro del círculo
+    geojsonData.features.forEach(f => {
+      const puntoManzana = turf.point(f.properties.centroide);
+      if (turf.booleanPointInPolygon(puntoManzana, circuloGeo)) {
+        sumaPobTot += f.properties.POBTOT;
+        sumaPobFem += f.properties.POBFEM_1;
+        sumaPobMas += f.properties.POBMAS_1;
+      }
+    });
+
+    // 3. Mostrar los resultados acumulados con formato de miles
+    document.getElementById("pobtot").textContent = sumaPobTot.toLocaleString();
+    document.getElementById("pobfem").textContent = sumaPobFem.toLocaleString();
+    document.getElementById("pobmas").textContent = sumaPobMas.toLocaleString();
+  }
+
+  // Evento de clic global en el mapa para gatillar el análisis por radio
+  map.on("click", (e) => {
+    ejecutarAnalisisEspacial(e.lngLat);
   });
 
-  map.on("mouseenter", "manzanas-fill", () => { map.getCanvas().style.cursor = "pointer"; });
-  map.on("mouseleave", "manzanas-fill", () => { map.getCanvas().style.cursor = ""; });
+  // Escuchar cambios en el slider para actualizar dinámicamente el análisis
+  document.getElementById("radio").addEventListener("input", (e) => {
+    document.getElementById("radio-val").textContent = e.target.value;
+    if (ultimoClickLngLat) {
+      ejecutarAnalisisEspacial(ultimoClickLngLat);
+    }
+  });
+
+  // Cambiar dinámicamente la variable del mapa temático según el selector
+  document.getElementById("variable").addEventListener("change", (e) => {
+    const valorSeleccionado = e.target.value;
+    map.setPaintProperty("manzanas-fill", "fill-color", [
+      "interpolate", ["linear"], ["get", valorSeleccionado],
+      0,   "#2c2c54",
+      50,  "#e17055",
+      200, "#d63031",
+      600, "#ff7675"
+    ]);
+  });
+
+  // Cursor tipo mira para indicar interactividad de selección
+  map.getCanvas().style.cursor = "crosshair";
 });
 </script>
 
