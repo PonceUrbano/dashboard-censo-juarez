@@ -16,6 +16,16 @@
   /* Columna de menús, en orden: cabecera, Capas, Rangos, Radio, Manzana */
   #paneles { position:absolute; top:10px; left:10px; z-index:1; width:290px; display:flex; flex-direction:column;
     gap:8px; max-height:calc(100% - 52px); overflow-y:auto; font-family:Arial,sans-serif; color:var(--texto); scrollbar-width:thin; }
+  #paneles.oculto { display:none; }
+
+  #toggle-paneles { position:absolute; top:10px; left:10px; z-index:2; width:38px; height:38px;
+    border-radius:8px; border:1px solid var(--linea); background:var(--bg); color:var(--texto);
+    font-size:18px; line-height:1; cursor:pointer; display:none; align-items:center; justify-content:center; }
+
+  @media (max-width: 640px) {
+    #toggle-paneles { display:flex; }
+    #paneles { top:56px; width:min(290px, calc(100vw - 20px)); max-height:calc(100% - 98px); }
+  }
   .panel { background:var(--bg); border-radius:8px; box-shadow:0 4px 10px rgba(0,0,0,.3); flex-shrink:0; }
   .cabecera { padding:12px; }
   .cabecera h2 { font-size:15px; margin:0 0 10px; padding-bottom:6px; border-bottom:1px solid var(--acento); }
@@ -60,6 +70,7 @@
 
 <div id="map"></div>
 
+<button id="toggle-paneles" type="button" aria-label="Mostrar u ocultar los menús" title="Mostrar u ocultar los menús">☰</button>
 <div id="paneles">
 
   <div class="panel cabecera">
@@ -73,14 +84,14 @@
     <p class="menu-ayuda">Cd. Juárez &mdash; Censo INEGI 2020</p>
   </div>
 
-  <details class="panel" open>
+  <details class="panel">
     <summary>Capas</summary>
     <div class="contenido">
       <label class="check"><input type="checkbox" id="chk-manzanas" checked /> Manzanas (colores)</label>
     </div>
   </details>
 
-  <details class="panel" open>
+  <details class="panel">
     <summary>Variable</summary>
     <div class="contenido">
       <label for="sel-variable">Variable del mapa:</label>
@@ -102,7 +113,7 @@
     </div>
   </details>
 
-  <details class="panel" id="menu-manzana" open>
+  <details class="panel" id="menu-manzana">
     <summary>Manzana</summary>
     <div class="contenido">
       <div id="id-manzana" class="id-manzana"></div>
