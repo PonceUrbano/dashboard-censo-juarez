@@ -29,6 +29,17 @@
   #panel label { font-size: 12px; opacity: 0.9; display: block; margin-bottom: 4px; }
   #panel select, #panel input[type="range"] { width: 100%; box-sizing: border-box; }
   #panel .valor { font-size: 28px; font-weight: bold; color: #fca311; display: block; margin: 4px 0; }
+  .radio-controles { display: flex; align-items: center; gap: 8px; }
+  .radio-controles input[type="range"] { flex: 1; }
+  .radio-controles input[type="number"] {
+    width: 70px; padding: 4px 6px; background: #1c2a4a; color: white;
+    border: 1px solid #4a5568; border-radius: 4px; font-size: 13px; text-align: center;
+  }
+
+  /* Leyenda de colores del mapa */
+  #leyenda-dinamica { margin-top: 6px; }
+  .leyenda-fila { display: flex; align-items: center; gap: 6px; margin: 3px 0; font-size: 11px; opacity: 0.9; }
+  .leyenda-caja { width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; }
 </style>
 </head>
 <body>
@@ -41,23 +52,49 @@
   <div class="control-group">
     <label for="variable">Variable Visual:</label>
     <select id="variable">
-      <option value="POBTOT">Población total</option>
-      <option value="POBFEM_1">Población femenina</option>
-      <option value="POBMAS_1">Población masculina</option>
+      <optgroup label="Población">
+        <option value="POBTOT">Población total</option>
+        <option value="POBFEM_1">Población femenina</option>
+        <option value="POBMAS_1">Población masculina</option>
+      </optgroup>
+      <optgroup label="Grupos de edad">
+        <option value="POB0_14_15">Población 0-14 años</option>
+        <option value="POB15_6_65">Población 15-64 años</option>
+        <option value="POB65_MA_1">Población 65 años y más</option>
+      </optgroup>
+      <optgroup label="Educación y empleo">
+        <option value="GRAPROES_1">Grado promedio de escolaridad</option>
+        <option value="P15YM_AN_1">Población analfabeta (15+)</option>
+        <option value="PEA_1">Población económicamente activa</option>
+        <option value="PDESOCUP_1">Población desocupada</option>
+      </optgroup>
+      <optgroup label="Vivienda y servicios">
+        <option value="TVIVHAB_1">Viviendas habitadas</option>
+        <option value="PROM_OCU_1">Ocupantes promedio por vivienda</option>
+        <option value="VPH_C_EL_1">Viviendas con electricidad</option>
+        <option value="VPH_AGUA_1">Viviendas con agua entubada</option>
+        <option value="VPH_DREN_1">Viviendas con drenaje</option>
+        <option value="VPH_INTE_1">Viviendas con internet</option>
+      </optgroup>
     </select>
+    <div id="leyenda-dinamica"></div>
   </div>
 
   <div class="control-group">
-    <label for="radio">Radio de análisis: <span id="radio-val">1.0</span> km</label>
-    <input type="range" id="radio" min="0.2" max="5.0" step="0.1" value="1.0" />
+    <label for="radio">Radio de análisis (metros):</label>
+    <div class="radio-controles">
+      <input type="range" id="radio" min="100" max="5000" step="50" value="1000" />
+      <input type="number" id="radio-num" min="50" max="20000" step="10" value="1000" />
+    </div>
   </div>
 
   <p>Cd. Juárez &mdash; Censo INEGI 2020</p>
   <hr style="opacity: 0.2; margin: 12px 0;">
   
   <p>Resultados en el área:</p>
-  <p>Población total local: <span id="pobtot" class="valor">-</span></p>
-  <p>Mujeres: <span id="pobfem">-</span> &nbsp;|&nbsp; Hombres: <span id="pobmas">-</span></p>
+  <p id="etiqueta-variable-resultado">Población total:</p>
+  <span id="valor-variable" class="valor">-</span>
+  <p style="opacity:.75; font-size:12px; margin-top:8px;">Población total en el círculo: <span id="pobtot-contexto">-</span><br>Mujeres: <span id="pobfem-contexto">-</span> &nbsp;|&nbsp; Hombres: <span id="pobmas-contexto">-</span></p>
   <p style="opacity:.7; font-size:11px; margin-top:12px;">Haz clic en cualquier punto del mapa para calcular los datos en el radio elegido.</p>
 </div>
 
@@ -75,8 +112,29 @@ const map = new maplibregl.Map({
 map.addControl(new maplibregl.NavigationControl(), "top-right");
 
 map.on("load", async () => {
-  const resp = await fetch("manzanas_censo_tema1.geojson");
+  // Cache-busting: evita que el navegador use una copia vieja del geojson en memoria/disco
+  const resp = await fetch("manzanas_censo_tema1.geojson?v=" + Date.now());
   geojsonData = await resp.json();
+
+  // Configuración de cada variable: etiqueta legible y si se debe SUMAR (conteos) o PROMEDIAR (tasas/promedios)
+  const configVariables = {
+    POBTOT:      { label: "Población total",                      tipo: "suma" },
+    POBFEM_1:    { label: "Población femenina",                   tipo: "suma" },
+    POBMAS_1:    { label: "Población masculina",                  tipo: "suma" },
+    POB0_14_15:  { label: "Población 0-14 años",                  tipo: "suma" },
+    POB15_6_65:  { label: "Población 15-64 años",                 tipo: "suma" },
+    POB65_MA_1:  { label: "Población 65 años y más",              tipo: "suma" },
+    GRAPROES_1:  { label: "Grado promedio de escolaridad",        tipo: "promedio" },
+    P15YM_AN_1:  { label: "Población analfabeta (15+)",           tipo: "suma" },
+    PEA_1:       { label: "Población económicamente activa",      tipo: "suma" },
+    PDESOCUP_1:  { label: "Población desocupada",                 tipo: "suma" },
+    TVIVHAB_1:   { label: "Viviendas habitadas",                  tipo: "suma" },
+    PROM_OCU_1:  { label: "Ocupantes promedio por vivienda",      tipo: "promedio" },
+    VPH_C_EL_1:  { label: "Viviendas con electricidad",           tipo: "suma" },
+    VPH_AGUA_1:  { label: "Viviendas con agua entubada",          tipo: "suma" },
+    VPH_DREN_1:  { label: "Viviendas con drenaje",                tipo: "suma" },
+    VPH_INTE_1:  { label: "Viviendas con internet",                tipo: "suma" }
+  };
 
   // Asegurar que valores nulos o indefinidos sean 0 para evitar errores en las sumas
   geojsonData.features.forEach(f => {
@@ -89,6 +147,64 @@ map.on("load", async () => {
   });
 
   map.addSource("manzanas", { type: "geojson", data: geojsonData });
+
+  // Paleta secuencial cálida (4 clases, de bajo a alto) + color neutro para "0 / sin dato"
+  const paletaSecuencial = ["#ffeda0", "#fd8d3c", "#f03b20", "#bd0026"];
+  const colorSinDato = "#3d4a63";
+
+  // Calcula 3 puntos de corte que dividen los valores POSITIVOS de una variable en 4 grupos
+  // con cantidades similares de manzanas (clasificación por cuartiles), en vez de una escala
+  // lineal por el máximo (que con datos de censo, muy sesgados, deja casi todo del mismo color).
+  function calcularCuartiles(variable) {
+    const valores = geojsonData.features
+      .map(f => f.properties[variable])
+      .filter(v => v !== undefined && v !== null && v > 0)
+      .sort((a, b) => a - b);
+
+    if (valores.length === 0) return [1, 2, 3];
+
+    const cortes = [0.25, 0.5, 0.75].map(pct => {
+      const idx = Math.min(Math.floor(pct * valores.length), valores.length - 1);
+      return valores[idx];
+    });
+
+    // Evitar cortes duplicados cuando hay muchos valores repetidos (ej. variables binarias)
+    for (let i = 1; i < cortes.length; i++) {
+      if (cortes[i] <= cortes[i - 1]) cortes[i] = cortes[i - 1] + 0.01;
+    }
+    return cortes;
+  }
+
+  // Dibuja la leyenda visual (cajitas de color + rango de cada clase) en el panel
+  function actualizarLeyenda(cortes) {
+    const [b1, b2, b3] = cortes;
+    const formato = n => (Number.isInteger(n) ? n.toLocaleString() : n.toFixed(1));
+    const filas = [
+      { color: colorSinDato, texto: "Sin dato / 0" },
+      { color: paletaSecuencial[0], texto: `0 - ${formato(b1)}` },
+      { color: paletaSecuencial[1], texto: `${formato(b1)} - ${formato(b2)}` },
+      { color: paletaSecuencial[2], texto: `${formato(b2)} - ${formato(b3)}` },
+      { color: paletaSecuencial[3], texto: `${formato(b3)} +` }
+    ];
+    document.getElementById("leyenda-dinamica").innerHTML = filas.map(f =>
+      `<div class="leyenda-fila"><div class="leyenda-caja" style="background:${f.color}"></div>${f.texto}</div>`
+    ).join("");
+  }
+
+  // Genera la expresión de color de MapLibre por clasificación de cuartiles (clases discretas,
+  // no gradiente), y actualiza la leyenda visual al mismo tiempo.
+  function generarExpresionColor(variable) {
+    const [b1, b2, b3] = calcularCuartiles(variable);
+    actualizarLeyenda([b1, b2, b3]);
+    return [
+      "step", ["coalesce", ["get", variable], 0],
+      colorSinDato,
+      0.0001, paletaSecuencial[0],
+      b1, paletaSecuencial[1],
+      b2, paletaSecuencial[2],
+      b3, paletaSecuencial[3]
+    ];
+  }
 
   // Source para dibujar el círculo de búsqueda en tiempo real
   map.addSource("circulo-busqueda", {
@@ -103,14 +219,8 @@ map.on("load", async () => {
     source: "manzanas",
     filter: [">", ["get", "POBTOT"], 0],
     paint: {
-      "fill-color": [
-        "interpolate", ["linear"], ["get", "POBTOT"],
-        0,   "#2c2c54",
-        50,  "#e17055",
-        200, "#d63031",
-        600, "#ff7675"
-      ],
-      "fill-opacity": 0.35
+      "fill-color": generarExpresionColor("POBTOT"),
+      "fill-opacity": 0.6
     }
   });
 
@@ -123,19 +233,19 @@ map.on("load", async () => {
   });
 
   // Capas del círculo de análisis (Relleno y borde)
-  map.addLayer({
-    id: "circulo-layer-fill",
-    type: "fill",
-    source: "circulo-busqueda",
-    paint: { "fill-color": "#fca311", "fill-opacity": 0.15 }
-  });
+map.addLayer({
+  id: "circulo-layer-fill",
+  type: "fill",
+  source: "circulo-busqueda",
+  paint: { "fill-color": "#38bdf8", "fill-opacity": 0.15 }
+});
 
-  map.addLayer({
-    id: "circulo-layer-stroke",
-    type: "line",
-    source: "circulo-busqueda",
-    paint: { "line-color": "#fca311", "line-width": 2, "line-dasharray": [2, 2] }
-  });
+map.addLayer({
+  id: "circulo-layer-stroke",
+  type: "line",
+  source: "circulo-busqueda",
+  paint: { "line-color": "#38bdf8", "line-width": 2, "line-dasharray": [2, 2] }
+});
 
   // Ajustar la vista del mapa automáticamente a la extensión del GeoJSON
   const bounds = new maplibregl.LngLatBounds();
@@ -152,16 +262,21 @@ map.on("load", async () => {
     if (!geojsonData) return;
     
     ultimoClickLngLat = lngLat;
-    const radioKm = parseFloat(document.getElementById("radio").value);
+    const radioMetros = parseFloat(document.getElementById("radio-num").value) || 1000;
     const puntoCentro = turf.point([lngLat.lng, lngLat.lat]);
     
-    // 1. Crear la geometría poligonal del círculo usando Turf.js
-    const circuloGeo = turf.buffer(puntoCentro, radioKm, { units: "kilometers" });
+    // 1. Crear la geometría poligonal del círculo usando Turf.js (metros -> km para la unidad que pide turf.buffer)
+    const circuloGeo = turf.buffer(puntoCentro, radioMetros / 1000, { units: "kilometers" });
     map.getSource("circulo-busqueda").setData(circuloGeo);
 
     let sumaPobTot = 0;
     let sumaPobFem = 0;
     let sumaPobMas = 0;
+
+    const variableSeleccionada = document.getElementById("variable").value;
+    const config = configVariables[variableSeleccionada] || { label: variableSeleccionada, tipo: "suma" };
+    let sumaVariable = 0;
+    let contManzanasConDato = 0;
 
     // 2. Sumar datos de manzanas cuyo centroide caiga dentro del círculo
     geojsonData.features.forEach(f => {
@@ -170,13 +285,28 @@ map.on("load", async () => {
         sumaPobTot += f.properties.POBTOT;
         sumaPobFem += f.properties.POBFEM_1;
         sumaPobMas += f.properties.POBMAS_1;
+
+        const v = f.properties[variableSeleccionada];
+        if (v !== undefined && v !== null) {
+          sumaVariable += v;
+          contManzanasConDato++;
+        }
       }
     });
 
-    // 3. Mostrar los resultados acumulados con formato de miles
-    document.getElementById("pobtot").textContent = sumaPobTot.toLocaleString();
-    document.getElementById("pobfem").textContent = sumaPobFem.toLocaleString();
-    document.getElementById("pobmas").textContent = sumaPobMas.toLocaleString();
+    const valorFinal = config.tipo === "promedio"
+      ? (contManzanasConDato > 0 ? sumaVariable / contManzanasConDato : 0)
+      : sumaVariable;
+
+    // 3. Mostrar los resultados: la variable elegida como dato principal, población como contexto fijo
+    document.getElementById("etiqueta-variable-resultado").textContent = config.label + ":";
+    document.getElementById("valor-variable").textContent = config.tipo === "promedio"
+      ? valorFinal.toLocaleString(undefined, { maximumFractionDigits: 1 })
+      : Math.round(valorFinal).toLocaleString();
+
+    document.getElementById("pobtot-contexto").textContent = sumaPobTot.toLocaleString();
+    document.getElementById("pobfem-contexto").textContent = sumaPobFem.toLocaleString();
+    document.getElementById("pobmas-contexto").textContent = sumaPobMas.toLocaleString();
   }
 
   // Evento de clic global en el mapa para gatillar el análisis por radio
@@ -184,24 +314,36 @@ map.on("load", async () => {
     ejecutarAnalisisEspacial(e.lngLat);
   });
 
-  // Escuchar cambios en el slider para actualizar dinámicamente el análisis
+  // Escuchar cambios en el slider (metros) -> refleja el valor en el input numérico
   document.getElementById("radio").addEventListener("input", (e) => {
-    document.getElementById("radio-val").textContent = e.target.value;
+    document.getElementById("radio-num").value = e.target.value;
     if (ultimoClickLngLat) {
       ejecutarAnalisisEspacial(ultimoClickLngLat);
+    }
+  });
+
+  // Escuchar cambios en el input numérico (metros) -> refleja el valor en el slider
+  document.getElementById("radio-num").addEventListener("input", (e) => {
+    const valor = parseFloat(e.target.value);
+    if (!isNaN(valor)) {
+      // Si el valor cabe en el rango del slider, lo sincroniza también
+      const slider = document.getElementById("radio");
+      if (valor >= parseFloat(slider.min) && valor <= parseFloat(slider.max)) {
+        slider.value = valor;
+      }
+      if (ultimoClickLngLat) {
+        ejecutarAnalisisEspacial(ultimoClickLngLat);
+      }
     }
   });
 
   // Cambiar dinámicamente la variable del mapa temático según el selector
   document.getElementById("variable").addEventListener("change", (e) => {
     const valorSeleccionado = e.target.value;
-    map.setPaintProperty("manzanas-fill", "fill-color", [
-      "interpolate", ["linear"], ["get", valorSeleccionado],
-      0,   "#2c2c54",
-      50,  "#e17055",
-      200, "#d63031",
-      600, "#ff7675"
-    ]);
+    map.setPaintProperty("manzanas-fill", "fill-color", generarExpresionColor(valorSeleccionado));
+    if (ultimoClickLngLat) {
+      ejecutarAnalisisEspacial(ultimoClickLngLat);
+    }
   });
 
   // Cursor tipo mira para indicar interactividad de selección
