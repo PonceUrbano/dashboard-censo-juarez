@@ -28,8 +28,7 @@
   #panel p { margin: 6px 0; font-size: 14px; }
   #panel .control-group { margin-bottom: 12px; }
   #panel label { font-size: 12px; opacity: 0.9; display: block; margin-bottom: 4px; }
-  #panel select, #panel input[type="range"] { width: 100%; box-sizing: border-box; }
-  #panel .valor { font-size: 28px; font-weight: bold; color: #fca311; display: block; margin: 4px 0; }
+  #panel input[type="range"] { width: 100%; box-sizing: border-box; }
   .radio-controles { display: flex; align-items: center; gap: 8px; }
   .radio-controles input[type="range"] { flex: 1; }
   .radio-controles input[type="number"] {
@@ -37,26 +36,30 @@
     border: 1px solid #4a5568; border-radius: 4px; font-size: 13px; text-align: center;
   }
 
-  /* Selector de modo (Radio / Manzana) */
-  .modo-toggle { display: flex; border: 1px solid #4a5568; border-radius: 6px; overflow: hidden; }
-  .modo-toggle button {
-    flex: 1; padding: 7px 0; background: #1c2a4a; color: white; border: 0;
-    font-size: 13px; cursor: pointer; font-family: inherit;
-  }
-  .modo-toggle button + button { border-left: 1px solid #4a5568; }
-  .modo-toggle button.activo { background: #fca311; color: #14213d; font-weight: bold; }
-  .modo-toggle button:focus-visible { outline: 2px solid #38bdf8; outline-offset: -2px; }
+  /* Logo */
+  .logo { background: #fff; border-radius: 6px; padding: 6px 8px; margin-bottom: 12px; text-align: center; }
+  .logo img { display: block; margin: 0 auto; width: 190px; max-width: 100%; height: auto; }
 
-  /* Tabla de datos de la manzana seleccionada */
-  #tabla-manzana { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; }
-  #tabla-manzana td { padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.08); }
-  #tabla-manzana td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
-  #tabla-manzana tr.fila-activa td { color: #fca311; font-weight: bold; }
-  #tabla-manzana tr.grupo td { padding-top: 8px; font-size: 11px; opacity: 0.7; border-bottom: 0; }
-  .id-manzana { font-size: 11px; opacity: 0.7; word-break: break-all; }
+  /* Tablas de datos (Radio y Manzana): cada fila colorea el mapa con esa variable */
+  .tabla-datos { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; }
+  .tabla-datos td { padding: 3px 4px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+  .tabla-datos td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  .tabla-datos tr[data-var] { cursor: pointer; }
+  .tabla-datos tr[data-var]:hover td { background: rgba(255,255,255,0.07); }
+  .tabla-datos tr[data-var]:focus-visible { outline: 2px solid #38bdf8; outline-offset: -2px; }
+  .tabla-datos tr.fila-activa td { color: #fca311; font-weight: bold; }
+  .tabla-datos tr.grupo td { padding-top: 8px; font-size: 11px; opacity: 0.7; border-bottom: 0; }
+  .resumen { font-size: 12px; opacity: .8; margin: 4px 0; }
+  .id-manzana { font-size: 12px; opacity: 0.8; word-break: break-all; margin: 4px 0; }
 
   /* Leyenda de colores del mapa */
-  #leyenda-dinamica { margin-top: 6px; }
+  #leyenda-mapa { margin-top: 6px; }
+  .menu-ayuda { opacity: .7; font-size: 11px; margin-top: 12px; }
+
+  /* Menús desplegables (Radio / Manzana) */
+  #panel details.menu { border-top: 1px solid rgba(255,255,255,0.15); padding-top: 10px; margin-top: 8px; }
+  #panel details.menu > summary { cursor: pointer; font-size: 15px; font-weight: bold; color: #fca311; margin-bottom: 10px; }
+  #panel details.menu > summary:focus-visible { outline: 2px solid #38bdf8; outline-offset: 2px; }
   .leyenda-fila { display: flex; align-items: center; gap: 6px; margin: 3px 0; font-size: 11px; opacity: 0.9; }
   .leyenda-caja { width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; }
 </style>
@@ -66,83 +69,53 @@
 <div id="map"></div>
 
 <div id="panel">
+  <div class="logo"><img src="data:image/png;base64,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" alt="Diseño Urbano y del Paisaje" /></div>
   <h2>Dashboard Demográfico</h2>
 
   <div class="control-group">
-    <label>Modo de selección:</label>
-    <div class="modo-toggle" role="group" aria-label="Modo de selección">
-      <button type="button" id="btn-modo-radio" data-modo="radio" class="activo">Por radio</button>
-      <button type="button" id="btn-modo-manzana" data-modo="manzana">Una manzana</button>
+    <label>Colores del mapa: <strong id="mapa-variable-etiqueta">Población total</strong></label>
+    <div id="leyenda-mapa"></div>
+    <p class="menu-ayuda" style="margin: 8px 0 0;">Haz clic en una fila de cualquier tabla para colorear el mapa con esa variable.</p>
+  </div>
+
+  <!-- ============ MENÚ RADIO ============ -->
+  <details class="menu" open>
+    <summary>Radio</summary>
+
+    <div class="control-group" id="grupo-radio">
+      <label for="radio">Radio de análisis (metros):</label>
+      <div class="radio-controles">
+        <input type="range" id="radio" min="100" max="5000" step="50" value="1000" />
+        <input type="number" id="radio-num" min="50" max="20000" step="10" value="1000" />
+      </div>
     </div>
-  </div>
 
-  <div class="control-group">
-    <label for="variable">Variable Visual:</label>
-    <select id="variable">
-      <optgroup label="Población">
-        <option value="POBTOT">Población total</option>
-        <option value="POBFEM_1">Población femenina</option>
-        <option value="POBMAS_1">Población masculina</option>
-      </optgroup>
-      <optgroup label="Grupos de edad">
-        <option value="POB0_14_15">Población 0-14 años</option>
-        <option value="POB15_6_65">Población 15-64 años</option>
-        <option value="POB65_MA_1">Población 65 años y más</option>
-      </optgroup>
-      <optgroup label="Educación y empleo">
-        <option value="GRAPROES_1">Grado promedio de escolaridad</option>
-        <option value="P15YM_AN_1">Población analfabeta (15+)</option>
-        <option value="PEA_1">Población económicamente activa</option>
-        <option value="PDESOCUP_1">Población desocupada</option>
-      </optgroup>
-      <optgroup label="Vivienda y servicios">
-        <option value="TVIVHAB_1">Viviendas habitadas</option>
-        <option value="PROM_OCU_1">Ocupantes promedio por vivienda</option>
-        <option value="VPH_C_EL_1">Viviendas con electricidad</option>
-        <option value="VPH_AGUA_1">Viviendas con agua entubada</option>
-        <option value="VPH_DREN_1">Viviendas con drenaje</option>
-        <option value="VPH_INTE_1">Viviendas con internet</option>
-      </optgroup>
-    </select>
-    <div id="leyenda-dinamica"></div>
-  </div>
-
-  <div class="control-group" id="grupo-radio">
-    <label for="radio">Radio de análisis (metros):</label>
-    <div class="radio-controles">
-      <input type="range" id="radio" min="100" max="5000" step="50" value="1000" />
-      <input type="number" id="radio-num" min="50" max="20000" step="10" value="1000" />
+    <div id="resultados-radio">
+      <p id="resumen-radio" class="resumen">Haz clic en el mapa para calcular el radio.</p>
+      <table id="tabla-radio" class="tabla-datos"></table>
     </div>
-  </div>
+  </details>
 
-  <p>Cd. Juárez &mdash; Censo INEGI 2020</p>
-  <hr style="opacity: 0.2; margin: 12px 0;">
+  <!-- ============ MENÚ MANZANA ============ -->
+  <details class="menu" open>
+    <summary>Manzana</summary>
 
-  <!-- Resultados del modo RADIO -->
-  <div id="resultados-radio">
-    <p>Resultados en el área:</p>
-    <p id="etiqueta-variable-resultado">Población total:</p>
-    <span id="valor-variable" class="valor">-</span>
-    <p style="opacity:.75; font-size:12px; margin-top:8px;">Población total en el círculo: <span id="pobtot-contexto">-</span><br>Mujeres: <span id="pobfem-contexto">-</span> &nbsp;|&nbsp; Hombres: <span id="pobmas-contexto">-</span></p>
-  </div>
+    <div id="resultados-manzana">
+      <div id="id-manzana" class="id-manzana"></div>
+      <table id="tabla-manzana" class="tabla-datos"></table>
+    </div>
+  </details>
 
-  <!-- Resultados del modo MANZANA -->
-  <div id="resultados-manzana" style="display:none;">
-    <p>Manzana seleccionada:</p>
-    <div id="id-manzana" class="id-manzana"></div>
-    <p id="etiqueta-manzana-variable">-</p>
-    <span id="valor-manzana" class="valor">-</span>
-    <table id="tabla-manzana"></table>
-  </div>
-
-  <p id="ayuda-modo" style="opacity:.7; font-size:11px; margin-top:12px;">Haz clic en cualquier punto del mapa para calcular los datos en el radio elegido.</p>
+  <p class="menu-ayuda">Un clic en el mapa calcula el radio alrededor del punto y selecciona la manzana que quedó bajo el clic.</p>
+  <p style="opacity:.7; font-size:12px; margin: 10px 0 0;">Cd. Juárez &mdash; Censo INEGI 2020</p>
 </div>
 
 <script>
 let geojsonData = null;
 let ultimoClickLngLat = null;
-let modo = "radio";          // "radio" | "manzana"
 let manzanaSel = null;       // feature de la manzana seleccionada
+
+let variableMapa = "POBTOT";   // variable con la que se colorea el mapa (se cambia desde las tablas)
 
 const map = new maplibregl.Map({
   container: "map",
@@ -238,7 +211,7 @@ map.on("load", async () => {
       { color: paletaSecuencial[2], texto: `${formato(b2)} - ${formato(b3)}` },
       { color: paletaSecuencial[3], texto: `${formato(b3)} +` }
     ];
-    document.getElementById("leyenda-dinamica").innerHTML = filas.map(f =>
+    document.getElementById("leyenda-mapa").innerHTML = filas.map(f =>
       `<div class="leyenda-fila"><div class="leyenda-caja" style="background:${f.color}"></div>${f.texto}</div>`
     ).join("");
   }
@@ -338,81 +311,10 @@ map.on("load", async () => {
   map.fitBounds(bounds, { padding: 20 });
 
   // -----------------------------------------------------------------
-  // MODO RADIO: genera el círculo y suma las poblaciones locales
-  // -----------------------------------------------------------------
-  function ejecutarAnalisisEspacial(lngLat) {
-    if (!geojsonData) return;
-    
-    ultimoClickLngLat = lngLat;
-    const radioMetros = parseFloat(document.getElementById("radio-num").value) || 1000;
-    const puntoCentro = turf.point([lngLat.lng, lngLat.lat]);
-    
-    // 1. Crear la geometría poligonal del círculo usando Turf.js (metros -> km para la unidad que pide turf.buffer)
-    const circuloGeo = turf.buffer(puntoCentro, radioMetros / 1000, { units: "kilometers" });
-    map.getSource("circulo-busqueda").setData(circuloGeo);
-
-    let sumaPobTot = 0;
-    let sumaPobFem = 0;
-    let sumaPobMas = 0;
-
-    const variableSeleccionada = document.getElementById("variable").value;
-    const config = configVariables[variableSeleccionada] || { label: variableSeleccionada, tipo: "suma" };
-    // 2. Sumar datos de manzanas cuyo centroide caiga dentro del círculo
-    let sumaVariable = 0;   // suma de valores (o de valor x peso en los promedios)
-    let sumaPeso = 0;
-    let contManzanasConDato = 0;
-
-    geojsonData.features.forEach(f => {
-      const puntoManzana = turf.point(f.properties.centroide);
-      if (!turf.booleanPointInPolygon(puntoManzana, circuloGeo)) return;
-
-      sumaPobTot += f.properties.POBTOT;
-      sumaPobFem += f.properties.POBFEM_1;
-      sumaPobMas += f.properties.POBMAS_1;
-
-      const v = f.properties[variableSeleccionada];
-      if (typeof v !== "number" || !isFinite(v)) return;
-
-      if (config.tipo === "promedio") {
-        const w = config.peso ? f.properties[config.peso] : 1;
-        if (typeof w === "number" && w > 0) {
-          sumaVariable += v * w;
-          sumaPeso += w;
-          contManzanasConDato++;
-        }
-      } else {
-        sumaVariable += v;
-        contManzanasConDato++;
-      }
-    });
-
-    let valorFinal = null;
-    if (contManzanasConDato > 0) {
-      valorFinal = config.tipo === "promedio" ? sumaVariable / sumaPeso : sumaVariable;
-    }
-
-    // 3. Mostrar los resultados: la variable elegida como dato principal, población como contexto fijo
-    document.getElementById("etiqueta-variable-resultado").textContent = config.label + ":";
-
-    if (valorFinal === null) {
-      document.getElementById("valor-variable").textContent = "Sin dato";
-    } else {
-      document.getElementById("valor-variable").textContent = config.tipo === "promedio"
-        ? valorFinal.toLocaleString(undefined, { maximumFractionDigits: 1 })
-        : Math.round(valorFinal).toLocaleString();
-    }
-
-    document.getElementById("pobtot-contexto").textContent = sumaPobTot.toLocaleString();
-    document.getElementById("pobfem-contexto").textContent = sumaPobFem.toLocaleString();
-    document.getElementById("pobmas-contexto").textContent = sumaPobMas.toLocaleString();
-  }
-
-  // -----------------------------------------------------------------
-  // MODO MANZANA: selecciona una manzana individual y muestra sus datos
+  // Utilidades de las tablas (Radio y Manzana)
   // -----------------------------------------------------------------
 
-  // Formatea un valor de la manzana. Si el censo trae texto (ej. "*" por confidencialidad)
-  // lo muestra tal cual en lugar de romper la tabla.
+  // Formatea un valor. Si el censo trae texto (ej. "*" por confidencialidad) lo muestra tal cual.
   function formatearValor(v, tipo) {
     if (v === undefined || v === null || v === "") return "Sin dato";
     if (tipo === "promedio" && v === 0) return "Sin dato";
@@ -424,20 +326,9 @@ map.on("load", async () => {
     return String(v);
   }
 
-  function mostrarManzana() {
-    if (!manzanaSel) return;
-    const props = manzanaSel.properties;
-    const variableSeleccionada = document.getElementById("variable").value;
-    const config = configVariables[variableSeleccionada] || { label: variableSeleccionada, tipo: "suma" };
-
-    // Identificador de la manzana, si el GeoJSON trae alguna clave conocida
-    const claveId = ["CVEGEO", "CVE_GEO", "CVE_MZA", "MANZANA"].find(k => props[k] !== undefined && props[k] !== null);
-    document.getElementById("id-manzana").textContent = claveId ? `${claveId}: ${props[claveId]}` : `Manzana n.º ${props._id + 1}`;
-
-    document.getElementById("etiqueta-manzana-variable").textContent = config.label + ":";
-    document.getElementById("valor-manzana").textContent = formatearValor(props[variableSeleccionada], config.tipo);
-
-    // Tabla con todas las variables, agrupadas; la variable activa se resalta
+  // Dibuja una tabla con las 16 variables agrupadas. obtenerValor(clave, cfg) devuelve el texto de cada fila.
+  // Las filas son botones: al hacer clic colorean el mapa con esa variable.
+  function dibujarTabla(idTabla, obtenerValor) {
     let html = "";
     let grupoActual = "";
     Object.entries(configVariables).forEach(([clave, cfg]) => {
@@ -445,19 +336,80 @@ map.on("load", async () => {
         grupoActual = cfg.grupo;
         html += `<tr class="grupo"><td colspan="2">${grupoActual}</td></tr>`;
       }
-      html += `<tr class="${clave === variableSeleccionada ? "fila-activa" : ""}">` +
-              `<td>${cfg.label}</td><td>${formatearValor(props[clave], cfg.tipo)}</td></tr>`;
+      html += `<tr data-var="${clave}" tabindex="0" title="Colorear el mapa con esta variable" ` +
+              `class="${clave === variableMapa ? "fila-activa" : ""}">` +
+              `<td>${cfg.label}</td><td>${obtenerValor(clave, cfg)}</td></tr>`;
     });
-    document.getElementById("tabla-manzana").innerHTML = html;
+    document.getElementById(idTabla).innerHTML = html;
+  }
+
+  // -----------------------------------------------------------------
+  // RADIO: genera el círculo y agrega las 16 variables de las manzanas dentro de él
+  // -----------------------------------------------------------------
+
+  // Suma (o promedio ponderado) de una variable sobre un conjunto de manzanas. null si no hay dato.
+  function agregarVariable(manzanas, variable, cfg) {
+    let suma = 0, peso = 0, n = 0;
+    manzanas.forEach(f => {
+      const v = f.properties[variable];
+      if (typeof v !== "number" || !isFinite(v)) return;
+      if (cfg.tipo === "promedio") {
+        const w = cfg.peso ? f.properties[cfg.peso] : 1;
+        if (typeof w === "number" && w > 0) { suma += v * w; peso += w; n++; }
+      } else {
+        suma += v; n++;
+      }
+    });
+    if (n === 0) return null;
+    return cfg.tipo === "promedio" ? suma / peso : suma;
+  }
+
+  function ejecutarAnalisisEspacial(lngLat) {
+    if (!geojsonData) return;
+
+    ultimoClickLngLat = lngLat;
+    const radioMetros = parseFloat(document.getElementById("radio-num").value) || 1000;
+    const puntoCentro = turf.point([lngLat.lng, lngLat.lat]);
+
+    // 1. Crear la geometría poligonal del círculo usando Turf.js (metros -> km para la unidad que pide turf.buffer)
+    const circuloGeo = turf.buffer(puntoCentro, radioMetros / 1000, { units: "kilometers" });
+    map.getSource("circulo-busqueda").setData(circuloGeo);
+
+    // 2. Manzanas cuyo centroide cae dentro del círculo
+    const dentro = geojsonData.features.filter(f =>
+      turf.booleanPointInPolygon(turf.point(f.properties.centroide), circuloGeo)
+    );
+
+    // 3. Agregar todas las variables y mostrarlas en la tabla
+    const valores = {};
+    Object.entries(configVariables).forEach(([clave, cfg]) => {
+      valores[clave] = agregarVariable(dentro, clave, cfg);
+    });
+
+    document.getElementById("resumen-radio").textContent =
+      `${dentro.length.toLocaleString()} manzanas en un radio de ${radioMetros.toLocaleString()} m`;
+    dibujarTabla("tabla-radio", (clave, cfg) => formatearValor(valores[clave], cfg.tipo));
+  }
+
+  // -----------------------------------------------------------------
+  // MANZANA: selecciona una manzana individual y muestra sus datos
+  // -----------------------------------------------------------------
+  function mostrarManzana() {
+    if (!manzanaSel) return;
+    const props = manzanaSel.properties;
+
+    // Identificador de la manzana, si el GeoJSON trae alguna clave conocida
+    const claveId = ["CveGeo", "CVEGEO", "CVE_GEO", "CVE_MZA", "MANZANA"].find(k => props[k] !== undefined && props[k] !== null);
+    document.getElementById("id-manzana").textContent = claveId ? `Clave: ${props[claveId]}` : `Manzana n.º ${props._id + 1}`;
+
+    dibujarTabla("tabla-manzana", (clave, cfg) => formatearValor(props[clave], cfg.tipo));
   }
 
   function limpiarManzana() {
     manzanaSel = null;
     map.getSource("manzana-seleccionada").setData(turf.featureCollection([]));
     document.getElementById("id-manzana").textContent = "Ninguna. Haz clic en una manzana.";
-    document.getElementById("etiqueta-manzana-variable").textContent = "-";
-    document.getElementById("valor-manzana").textContent = "-";
-    document.getElementById("tabla-manzana").innerHTML = "";
+    dibujarTabla("tabla-manzana", () => "-");
   }
 
   function seleccionarManzana(punto) {
@@ -472,47 +424,23 @@ map.on("load", async () => {
     mostrarManzana();
   }
 
-  // -----------------------------------------------------------------
-  // Cambio de modo (radio <-> manzana)
-  // -----------------------------------------------------------------
-  function cambiarModo(nuevoModo) {
-    modo = nuevoModo;
-    const esRadio = modo === "radio";
-
-    document.getElementById("btn-modo-radio").classList.toggle("activo", esRadio);
-    document.getElementById("btn-modo-manzana").classList.toggle("activo", !esRadio);
-    document.getElementById("grupo-radio").style.display = esRadio ? "" : "none";
-    document.getElementById("resultados-radio").style.display = esRadio ? "" : "none";
-    document.getElementById("resultados-manzana").style.display = esRadio ? "none" : "";
-    document.getElementById("ayuda-modo").textContent = esRadio
-      ? "Haz clic en cualquier punto del mapa para calcular los datos en el radio elegido."
-      : "Haz clic en una manzana para ver sus datos. Un clic fuera de las manzanas quita la selección.";
-    map.getCanvas().style.cursor = esRadio ? "crosshair" : "pointer";
-
-    // Limpiar lo que dibujó el otro modo
-    if (esRadio) {
-      limpiarManzana();
-    } else {
-      ultimoClickLngLat = null;
-      map.getSource("circulo-busqueda").setData(turf.featureCollection([]));
-      document.getElementById("valor-variable").textContent = "-";
-      document.getElementById("pobtot-contexto").textContent = "-";
-      document.getElementById("pobfem-contexto").textContent = "-";
-      document.getElementById("pobmas-contexto").textContent = "-";
-      limpiarManzana();
-    }
+  // Colorea el mapa con la variable indicada, actualiza el título y la leyenda,
+  // y resalta esa fila en las dos tablas
+  function colorearMapaPor(variable) {
+    variableMapa = variable;
+    map.setPaintProperty("manzanas-fill", "fill-color", generarExpresionColor(variable));
+    const cfg = configVariables[variable];
+    document.getElementById("mapa-variable-etiqueta").textContent = cfg ? cfg.label : variable;
+    document.querySelectorAll(".tabla-datos tr[data-var]").forEach(tr => {
+      tr.classList.toggle("fila-activa", tr.dataset.var === variable);
+    });
   }
 
-  document.getElementById("btn-modo-radio").addEventListener("click", () => cambiarModo("radio"));
-  document.getElementById("btn-modo-manzana").addEventListener("click", () => cambiarModo("manzana"));
-
-  // Evento de clic global en el mapa: depende del modo activo
+  // Un clic en el mapa hace las dos cosas: calcula el radio alrededor del punto
+  // y selecciona la manzana que quedó bajo el clic
   map.on("click", (e) => {
-    if (modo === "radio") {
-      ejecutarAnalisisEspacial(e.lngLat);
-    } else {
-      seleccionarManzana(e.point);
-    }
+    ejecutarAnalisisEspacial(e.lngLat);
+    seleccionarManzana(e.point);
   });
 
   // Escuchar cambios en el slider (metros) -> refleja el valor en el input numérico
@@ -538,18 +466,24 @@ map.on("load", async () => {
     }
   });
 
-  // Cambiar dinámicamente la variable del mapa temático según el selector
-  document.getElementById("variable").addEventListener("change", (e) => {
-    const valorSeleccionado = e.target.value;
-    map.setPaintProperty("manzanas-fill", "fill-color", generarExpresionColor(valorSeleccionado));
-    if (modo === "radio" && ultimoClickLngLat) {
-      ejecutarAnalisisEspacial(ultimoClickLngLat);
-    } else if (modo === "manzana" && manzanaSel) {
-      mostrarManzana();
+  // Clic (o Enter / Espacio) en una fila de cualquiera de las tablas: colorea el mapa con esa variable
+  const panel = document.getElementById("panel");
+  panel.addEventListener("click", (e) => {
+    const fila = e.target.closest("tr[data-var]");
+    if (fila) colorearMapaPor(fila.dataset.var);
+  });
+  panel.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const fila = e.target.closest("tr[data-var]");
+    if (fila) {
+      e.preventDefault();
+      colorearMapaPor(fila.dataset.var);
     }
   });
 
-  // Cursor tipo mira para indicar interactividad de selección (modo radio por defecto)
+  // Estado inicial: tablas con guiones hasta que se haga el primer clic
+  dibujarTabla("tabla-radio", () => "-");
+  limpiarManzana();
   map.getCanvas().style.cursor = "crosshair";
 });
 </script>
