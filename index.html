@@ -59,7 +59,7 @@
       </optgroup>
       <optgroup label="Grupos de edad">
         <option value="POB0_14_15">Población 0-14 años</option>
-        <option value="POB15_6_65">Población 15-64 años</option>
+        <option value="POB15_6_65">Población 15-65 años</option>
         <option value="POB65_MA_1">Población 65 años y más</option>
       </optgroup>
       <optgroup label="Educación y empleo">
@@ -115,6 +115,8 @@ map.on("load", async () => {
   // Cache-busting: evita que el navegador use una copia vieja del geojson en memoria/disco
   const resp = await fetch("manzanas_censo_tema1.geojson?v=" + Date.now());
   geojsonData = await resp.json();
+
+  console.log(Object.keys(geojsonData.features[0].properties));
 
   // Configuración de cada variable: etiqueta legible y si se debe SUMAR (conteos) o PROMEDIAR (tasas/promedios)
   const configVariables = {
@@ -299,10 +301,15 @@ map.addLayer({
       : sumaVariable;
 
     // 3. Mostrar los resultados: la variable elegida como dato principal, población como contexto fijo
-    document.getElementById("etiqueta-variable-resultado").textContent = config.label + ":";
-    document.getElementById("valor-variable").textContent = config.tipo === "promedio"
-      ? valorFinal.toLocaleString(undefined, { maximumFractionDigits: 1 })
-      : Math.round(valorFinal).toLocaleString();
+        document.getElementById("etiqueta-variable-resultado").textContent = config.label + ":";
+
+    if (contManzanasConDato === 0) {
+      document.getElementById("valor-variable").textContent = "Sin dato";
+    } else {
+      document.getElementById("valor-variable").textContent = config.tipo === "promedio"
+        ? valorFinal.toLocaleString(undefined, { maximumFractionDigits: 1 })
+        : Math.round(valorFinal).toLocaleString();
+    }
 
     document.getElementById("pobtot-contexto").textContent = sumaPobTot.toLocaleString();
     document.getElementById("pobfem-contexto").textContent = sumaPobFem.toLocaleString();
