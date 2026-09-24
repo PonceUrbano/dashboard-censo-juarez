@@ -22,6 +22,7 @@
     background: #14213d; color: white; padding: 16px;
     border-radius: 8px; width: 280px; font-family: Arial, sans-serif;
     box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    max-height: calc(100% - 52px); overflow-y: auto;
   }
   #panel h2 { font-size: 16px; margin: 0 0 12px; border-bottom: 1px solid #fca311; padding-bottom: 6px; }
   #panel p { margin: 6px 0; font-size: 14px; }
@@ -35,6 +36,24 @@
     width: 70px; padding: 4px 6px; background: #1c2a4a; color: white;
     border: 1px solid #4a5568; border-radius: 4px; font-size: 13px; text-align: center;
   }
+
+  /* Selector de modo (Radio / Manzana) */
+  .modo-toggle { display: flex; border: 1px solid #4a5568; border-radius: 6px; overflow: hidden; }
+  .modo-toggle button {
+    flex: 1; padding: 7px 0; background: #1c2a4a; color: white; border: 0;
+    font-size: 13px; cursor: pointer; font-family: inherit;
+  }
+  .modo-toggle button + button { border-left: 1px solid #4a5568; }
+  .modo-toggle button.activo { background: #fca311; color: #14213d; font-weight: bold; }
+  .modo-toggle button:focus-visible { outline: 2px solid #38bdf8; outline-offset: -2px; }
+
+  /* Tabla de datos de la manzana seleccionada */
+  #tabla-manzana { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; }
+  #tabla-manzana td { padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.08); }
+  #tabla-manzana td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  #tabla-manzana tr.fila-activa td { color: #fca311; font-weight: bold; }
+  #tabla-manzana tr.grupo td { padding-top: 8px; font-size: 11px; opacity: 0.7; border-bottom: 0; }
+  .id-manzana { font-size: 11px; opacity: 0.7; word-break: break-all; }
 
   /* Leyenda de colores del mapa */
   #leyenda-dinamica { margin-top: 6px; }
@@ -50,6 +69,14 @@
   <h2>Dashboard Demográfico</h2>
 
   <div class="control-group">
+    <label>Modo de selección:</label>
+    <div class="modo-toggle" role="group" aria-label="Modo de selección">
+      <button type="button" id="btn-modo-radio" data-modo="radio" class="activo">Por radio</button>
+      <button type="button" id="btn-modo-manzana" data-modo="manzana">Una manzana</button>
+    </div>
+  </div>
+
+  <div class="control-group">
     <label for="variable">Variable Visual:</label>
     <select id="variable">
       <optgroup label="Población">
@@ -59,7 +86,7 @@
       </optgroup>
       <optgroup label="Grupos de edad">
         <option value="POB0_14_15">Población 0-14 años</option>
-        <option value="POB15_6_65">Población 15-65 años</option>
+        <option value="POB15_6_65">Población 15-64 años</option>
         <option value="POB65_MA_1">Población 65 años y más</option>
       </optgroup>
       <optgroup label="Educación y empleo">
@@ -80,7 +107,7 @@
     <div id="leyenda-dinamica"></div>
   </div>
 
-  <div class="control-group">
+  <div class="control-group" id="grupo-radio">
     <label for="radio">Radio de análisis (metros):</label>
     <div class="radio-controles">
       <input type="range" id="radio" min="100" max="5000" step="50" value="1000" />
@@ -90,17 +117,32 @@
 
   <p>Cd. Juárez &mdash; Censo INEGI 2020</p>
   <hr style="opacity: 0.2; margin: 12px 0;">
-  
-  <p>Resultados en el área:</p>
-  <p id="etiqueta-variable-resultado">Población total:</p>
-  <span id="valor-variable" class="valor">-</span>
-  <p style="opacity:.75; font-size:12px; margin-top:8px;">Población total en el círculo: <span id="pobtot-contexto">-</span><br>Mujeres: <span id="pobfem-contexto">-</span> &nbsp;|&nbsp; Hombres: <span id="pobmas-contexto">-</span></p>
-  <p style="opacity:.7; font-size:11px; margin-top:12px;">Haz clic en cualquier punto del mapa para calcular los datos en el radio elegido.</p>
+
+  <!-- Resultados del modo RADIO -->
+  <div id="resultados-radio">
+    <p>Resultados en el área:</p>
+    <p id="etiqueta-variable-resultado">Población total:</p>
+    <span id="valor-variable" class="valor">-</span>
+    <p style="opacity:.75; font-size:12px; margin-top:8px;">Población total en el círculo: <span id="pobtot-contexto">-</span><br>Mujeres: <span id="pobfem-contexto">-</span> &nbsp;|&nbsp; Hombres: <span id="pobmas-contexto">-</span></p>
+  </div>
+
+  <!-- Resultados del modo MANZANA -->
+  <div id="resultados-manzana" style="display:none;">
+    <p>Manzana seleccionada:</p>
+    <div id="id-manzana" class="id-manzana"></div>
+    <p id="etiqueta-manzana-variable">-</p>
+    <span id="valor-manzana" class="valor">-</span>
+    <table id="tabla-manzana"></table>
+  </div>
+
+  <p id="ayuda-modo" style="opacity:.7; font-size:11px; margin-top:12px;">Haz clic en cualquier punto del mapa para calcular los datos en el radio elegido.</p>
 </div>
 
 <script>
 let geojsonData = null;
 let ultimoClickLngLat = null;
+let modo = "radio";          // "radio" | "manzana"
+let manzanaSel = null;       // feature de la manzana seleccionada
 
 const map = new maplibregl.Map({
   container: "map",
@@ -120,30 +162,38 @@ map.on("load", async () => {
 
   // Configuración de cada variable: etiqueta legible y si se debe SUMAR (conteos) o PROMEDIAR (tasas/promedios)
   const configVariables = {
-    POBTOT:      { label: "Población total",                      tipo: "suma" },
-    POBFEM_1:    { label: "Población femenina",                   tipo: "suma" },
-    POBMAS_1:    { label: "Población masculina",                  tipo: "suma" },
-    POB0_14_15:  { label: "Población 0-14 años",                  tipo: "suma" },
-    POB15_6_65:  { label: "Población 15-64 años",                 tipo: "suma" },
-    POB65_MA_1:  { label: "Población 65 años y más",              tipo: "suma" },
-    GRAPROES_1:  { label: "Grado promedio de escolaridad",        tipo: "promedio" },
-    P15YM_AN_1:  { label: "Población analfabeta (15+)",           tipo: "suma" },
-    PEA_1:       { label: "Población económicamente activa",      tipo: "suma" },
-    PDESOCUP_1:  { label: "Población desocupada",                 tipo: "suma" },
-    TVIVHAB_1:   { label: "Viviendas habitadas",                  tipo: "suma" },
-    PROM_OCU_1:  { label: "Ocupantes promedio por vivienda",      tipo: "promedio" },
-    VPH_C_EL_1:  { label: "Viviendas con electricidad",           tipo: "suma" },
-    VPH_AGUA_1:  { label: "Viviendas con agua entubada",          tipo: "suma" },
-    VPH_DREN_1:  { label: "Viviendas con drenaje",                tipo: "suma" },
-    VPH_INTE_1:  { label: "Viviendas con internet",                tipo: "suma" }
+    POBTOT:      { label: "Población total",                      tipo: "suma",     grupo: "Población" },
+    POBFEM_1:    { label: "Población femenina",                   tipo: "suma",     grupo: "Población" },
+    POBMAS_1:    { label: "Población masculina",                  tipo: "suma",     grupo: "Población" },
+    POB0_14_15:  { label: "Población 0-14 años",                  tipo: "suma",     grupo: "Grupos de edad" },
+    POB15_6_65:  { label: "Población 15-64 años",                 tipo: "suma",     grupo: "Grupos de edad" },
+    POB65_MA_1:  { label: "Población 65 años y más",              tipo: "suma",     grupo: "Grupos de edad" },
+    GRAPROES_1:  { label: "Grado promedio de escolaridad",        tipo: "promedio", grupo: "Educación y empleo" },
+    P15YM_AN_1:  { label: "Población analfabeta (15+)",           tipo: "suma",     grupo: "Educación y empleo" },
+    PEA_1:       { label: "Población económicamente activa",      tipo: "suma",     grupo: "Educación y empleo" },
+    PDESOCUP_1:  { label: "Población desocupada",                 tipo: "suma",     grupo: "Educación y empleo" },
+    TVIVHAB_1:   { label: "Viviendas habitadas",                  tipo: "suma",     grupo: "Vivienda y servicios" },
+    PROM_OCU_1:  { label: "Ocupantes promedio por vivienda",      tipo: "promedio", grupo: "Vivienda y servicios" },
+    VPH_C_EL_1:  { label: "Viviendas con electricidad",           tipo: "suma",     grupo: "Vivienda y servicios" },
+    VPH_AGUA_1:  { label: "Viviendas con agua entubada",          tipo: "suma",     grupo: "Vivienda y servicios" },
+    VPH_DREN_1:  { label: "Viviendas con drenaje",                tipo: "suma",     grupo: "Vivienda y servicios" },
+    VPH_INTE_1:  { label: "Viviendas con internet",               tipo: "suma",     grupo: "Vivienda y servicios" }
   };
 
+  // Variables tipo promedio: se ponderan por la población a la que se refieren, para que una manzana
+  // con 3 viviendas no pese lo mismo que una con 80 (y las manzanas vacías no bajen el promedio).
+  configVariables.GRAPROES_1.peso = "P_15YMAS_1";   // escolaridad: personas de 15 años y más
+  configVariables.PROM_OCU_1.peso = "TVIVHAB_1";    // ocupantes por vivienda: viviendas habitadas
+
   // Asegurar que valores nulos o indefinidos sean 0 para evitar errores en las sumas
-  geojsonData.features.forEach(f => {
+  geojsonData.features.forEach((f, i) => {
     f.properties.POBTOT = f.properties.POBTOT || 0;
     f.properties.POBFEM_1 = f.properties.POBFEM_1 || 0;
     f.properties.POBMAS_1 = f.properties.POBMAS_1 || 0;
-    
+
+    // Índice interno: permite recuperar la manzana original a partir de lo que devuelve el mapa al hacer clic
+    f.properties._id = i;
+
     // Calculamos el centroide de cada manzana una sola vez para agilizar el análisis espacial
     f.properties.centroide = turf.centroid(f).geometry.coordinates;
   });
@@ -160,7 +210,7 @@ map.on("load", async () => {
   function calcularCuartiles(variable) {
     const valores = geojsonData.features
       .map(f => f.properties[variable])
-      .filter(v => v !== undefined && v !== null && v > 0)
+      .filter(v => typeof v === "number" && isFinite(v) && v > 0)
       .sort((a, b) => a - b);
 
     if (valores.length === 0) return [1, 2, 3];
@@ -214,6 +264,12 @@ map.on("load", async () => {
     data: turf.featureCollection([])
   });
 
+  // Source para resaltar la manzana seleccionada
+  map.addSource("manzana-seleccionada", {
+    type: "geojson",
+    data: turf.featureCollection([])
+  });
+
   // Capa de relleno para las manzanas (Coroplético por POBTOT por defecto)
   map.addLayer({
     id: "manzanas-fill",
@@ -226,6 +282,15 @@ map.on("load", async () => {
     }
   });
 
+  // Capa invisible con TODAS las manzanas (incluidas las de población 0, que la capa de
+  // arriba filtra). Sirve solo para detectar el clic en cualquier manzana.
+  map.addLayer({
+    id: "manzanas-hit",
+    type: "fill",
+    source: "manzanas",
+    paint: { "fill-color": "#000000", "fill-opacity": 0 }
+  });
+
   // Bordes discretos de las manzanas
   map.addLayer({
     id: "manzanas-linea",
@@ -235,19 +300,34 @@ map.on("load", async () => {
   });
 
   // Capas del círculo de análisis (Relleno y borde)
-map.addLayer({
-  id: "circulo-layer-fill",
-  type: "fill",
-  source: "circulo-busqueda",
-  paint: { "fill-color": "#38bdf8", "fill-opacity": 0.15 }
-});
+  map.addLayer({
+    id: "circulo-layer-fill",
+    type: "fill",
+    source: "circulo-busqueda",
+    paint: { "fill-color": "#38bdf8", "fill-opacity": 0.15 }
+  });
 
-map.addLayer({
-  id: "circulo-layer-stroke",
-  type: "line",
-  source: "circulo-busqueda",
-  paint: { "line-color": "#38bdf8", "line-width": 2, "line-dasharray": [2, 2] }
-});
+  map.addLayer({
+    id: "circulo-layer-stroke",
+    type: "line",
+    source: "circulo-busqueda",
+    paint: { "line-color": "#38bdf8", "line-width": 2, "line-dasharray": [2, 2] }
+  });
+
+  // Capas de la manzana seleccionada (relleno y borde marcado)
+  map.addLayer({
+    id: "seleccion-fill",
+    type: "fill",
+    source: "manzana-seleccionada",
+    paint: { "fill-color": "#38bdf8", "fill-opacity": 0.35 }
+  });
+
+  map.addLayer({
+    id: "seleccion-stroke",
+    type: "line",
+    source: "manzana-seleccionada",
+    paint: { "line-color": "#0ea5e9", "line-width": 3 }
+  });
 
   // Ajustar la vista del mapa automáticamente a la extensión del GeoJSON
   const bounds = new maplibregl.LngLatBounds();
@@ -258,7 +338,7 @@ map.addLayer({
   map.fitBounds(bounds, { padding: 20 });
 
   // -----------------------------------------------------------------
-  // Función que genera el círculo y suma las poblaciones locales
+  // MODO RADIO: genera el círculo y suma las poblaciones locales
   // -----------------------------------------------------------------
   function ejecutarAnalisisEspacial(lngLat) {
     if (!geojsonData) return;
@@ -277,33 +357,44 @@ map.addLayer({
 
     const variableSeleccionada = document.getElementById("variable").value;
     const config = configVariables[variableSeleccionada] || { label: variableSeleccionada, tipo: "suma" };
-    let sumaVariable = 0;
+    // 2. Sumar datos de manzanas cuyo centroide caiga dentro del círculo
+    let sumaVariable = 0;   // suma de valores (o de valor x peso en los promedios)
+    let sumaPeso = 0;
     let contManzanasConDato = 0;
 
-    // 2. Sumar datos de manzanas cuyo centroide caiga dentro del círculo
     geojsonData.features.forEach(f => {
       const puntoManzana = turf.point(f.properties.centroide);
-      if (turf.booleanPointInPolygon(puntoManzana, circuloGeo)) {
-        sumaPobTot += f.properties.POBTOT;
-        sumaPobFem += f.properties.POBFEM_1;
-        sumaPobMas += f.properties.POBMAS_1;
+      if (!turf.booleanPointInPolygon(puntoManzana, circuloGeo)) return;
 
-        const v = f.properties[variableSeleccionada];
-        if (v !== undefined && v !== null) {
-          sumaVariable += v;
+      sumaPobTot += f.properties.POBTOT;
+      sumaPobFem += f.properties.POBFEM_1;
+      sumaPobMas += f.properties.POBMAS_1;
+
+      const v = f.properties[variableSeleccionada];
+      if (typeof v !== "number" || !isFinite(v)) return;
+
+      if (config.tipo === "promedio") {
+        const w = config.peso ? f.properties[config.peso] : 1;
+        if (typeof w === "number" && w > 0) {
+          sumaVariable += v * w;
+          sumaPeso += w;
           contManzanasConDato++;
         }
+      } else {
+        sumaVariable += v;
+        contManzanasConDato++;
       }
     });
 
-    const valorFinal = config.tipo === "promedio"
-      ? (contManzanasConDato > 0 ? sumaVariable / contManzanasConDato : 0)
-      : sumaVariable;
+    let valorFinal = null;
+    if (contManzanasConDato > 0) {
+      valorFinal = config.tipo === "promedio" ? sumaVariable / sumaPeso : sumaVariable;
+    }
 
     // 3. Mostrar los resultados: la variable elegida como dato principal, población como contexto fijo
-        document.getElementById("etiqueta-variable-resultado").textContent = config.label + ":";
+    document.getElementById("etiqueta-variable-resultado").textContent = config.label + ":";
 
-    if (contManzanasConDato === 0) {
+    if (valorFinal === null) {
       document.getElementById("valor-variable").textContent = "Sin dato";
     } else {
       document.getElementById("valor-variable").textContent = config.tipo === "promedio"
@@ -316,9 +407,112 @@ map.addLayer({
     document.getElementById("pobmas-contexto").textContent = sumaPobMas.toLocaleString();
   }
 
-  // Evento de clic global en el mapa para gatillar el análisis por radio
+  // -----------------------------------------------------------------
+  // MODO MANZANA: selecciona una manzana individual y muestra sus datos
+  // -----------------------------------------------------------------
+
+  // Formatea un valor de la manzana. Si el censo trae texto (ej. "*" por confidencialidad)
+  // lo muestra tal cual en lugar de romper la tabla.
+  function formatearValor(v, tipo) {
+    if (v === undefined || v === null || v === "") return "Sin dato";
+    if (tipo === "promedio" && v === 0) return "Sin dato";
+    if (typeof v === "number" && isFinite(v)) {
+      return tipo === "promedio"
+        ? v.toLocaleString(undefined, { maximumFractionDigits: 2 })
+        : v.toLocaleString();
+    }
+    return String(v);
+  }
+
+  function mostrarManzana() {
+    if (!manzanaSel) return;
+    const props = manzanaSel.properties;
+    const variableSeleccionada = document.getElementById("variable").value;
+    const config = configVariables[variableSeleccionada] || { label: variableSeleccionada, tipo: "suma" };
+
+    // Identificador de la manzana, si el GeoJSON trae alguna clave conocida
+    const claveId = ["CVEGEO", "CVE_GEO", "CVE_MZA", "MANZANA"].find(k => props[k] !== undefined && props[k] !== null);
+    document.getElementById("id-manzana").textContent = claveId ? `${claveId}: ${props[claveId]}` : `Manzana n.º ${props._id + 1}`;
+
+    document.getElementById("etiqueta-manzana-variable").textContent = config.label + ":";
+    document.getElementById("valor-manzana").textContent = formatearValor(props[variableSeleccionada], config.tipo);
+
+    // Tabla con todas las variables, agrupadas; la variable activa se resalta
+    let html = "";
+    let grupoActual = "";
+    Object.entries(configVariables).forEach(([clave, cfg]) => {
+      if (cfg.grupo !== grupoActual) {
+        grupoActual = cfg.grupo;
+        html += `<tr class="grupo"><td colspan="2">${grupoActual}</td></tr>`;
+      }
+      html += `<tr class="${clave === variableSeleccionada ? "fila-activa" : ""}">` +
+              `<td>${cfg.label}</td><td>${formatearValor(props[clave], cfg.tipo)}</td></tr>`;
+    });
+    document.getElementById("tabla-manzana").innerHTML = html;
+  }
+
+  function limpiarManzana() {
+    manzanaSel = null;
+    map.getSource("manzana-seleccionada").setData(turf.featureCollection([]));
+    document.getElementById("id-manzana").textContent = "Ninguna. Haz clic en una manzana.";
+    document.getElementById("etiqueta-manzana-variable").textContent = "-";
+    document.getElementById("valor-manzana").textContent = "-";
+    document.getElementById("tabla-manzana").innerHTML = "";
+  }
+
+  function seleccionarManzana(punto) {
+    const encontradas = map.queryRenderedFeatures(punto, { layers: ["manzanas-hit"] });
+    if (!encontradas.length) {
+      limpiarManzana();
+      return;
+    }
+    // Recuperamos la manzana original (geometría completa, sin recortes por teselas)
+    manzanaSel = geojsonData.features[encontradas[0].properties._id];
+    map.getSource("manzana-seleccionada").setData(turf.feature(manzanaSel.geometry));
+    mostrarManzana();
+  }
+
+  // -----------------------------------------------------------------
+  // Cambio de modo (radio <-> manzana)
+  // -----------------------------------------------------------------
+  function cambiarModo(nuevoModo) {
+    modo = nuevoModo;
+    const esRadio = modo === "radio";
+
+    document.getElementById("btn-modo-radio").classList.toggle("activo", esRadio);
+    document.getElementById("btn-modo-manzana").classList.toggle("activo", !esRadio);
+    document.getElementById("grupo-radio").style.display = esRadio ? "" : "none";
+    document.getElementById("resultados-radio").style.display = esRadio ? "" : "none";
+    document.getElementById("resultados-manzana").style.display = esRadio ? "none" : "";
+    document.getElementById("ayuda-modo").textContent = esRadio
+      ? "Haz clic en cualquier punto del mapa para calcular los datos en el radio elegido."
+      : "Haz clic en una manzana para ver sus datos. Un clic fuera de las manzanas quita la selección.";
+    map.getCanvas().style.cursor = esRadio ? "crosshair" : "pointer";
+
+    // Limpiar lo que dibujó el otro modo
+    if (esRadio) {
+      limpiarManzana();
+    } else {
+      ultimoClickLngLat = null;
+      map.getSource("circulo-busqueda").setData(turf.featureCollection([]));
+      document.getElementById("valor-variable").textContent = "-";
+      document.getElementById("pobtot-contexto").textContent = "-";
+      document.getElementById("pobfem-contexto").textContent = "-";
+      document.getElementById("pobmas-contexto").textContent = "-";
+      limpiarManzana();
+    }
+  }
+
+  document.getElementById("btn-modo-radio").addEventListener("click", () => cambiarModo("radio"));
+  document.getElementById("btn-modo-manzana").addEventListener("click", () => cambiarModo("manzana"));
+
+  // Evento de clic global en el mapa: depende del modo activo
   map.on("click", (e) => {
-    ejecutarAnalisisEspacial(e.lngLat);
+    if (modo === "radio") {
+      ejecutarAnalisisEspacial(e.lngLat);
+    } else {
+      seleccionarManzana(e.point);
+    }
   });
 
   // Escuchar cambios en el slider (metros) -> refleja el valor en el input numérico
@@ -348,12 +542,14 @@ map.addLayer({
   document.getElementById("variable").addEventListener("change", (e) => {
     const valorSeleccionado = e.target.value;
     map.setPaintProperty("manzanas-fill", "fill-color", generarExpresionColor(valorSeleccionado));
-    if (ultimoClickLngLat) {
+    if (modo === "radio" && ultimoClickLngLat) {
       ejecutarAnalisisEspacial(ultimoClickLngLat);
+    } else if (modo === "manzana" && manzanaSel) {
+      mostrarManzana();
     }
   });
 
-  // Cursor tipo mira para indicar interactividad de selección
+  // Cursor tipo mira para indicar interactividad de selección (modo radio por defecto)
   map.getCanvas().style.cursor = "crosshair";
 });
 </script>
